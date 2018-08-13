@@ -170,14 +170,12 @@ pub fn liveness_of_locals<'tcx, V: Idx>(
 ) -> LivenessResult<V> {
     let num_live_vars = map.num_variables();
 
-    let def_use: IndexVec<_, DefsUses<V>> = mir
-        .basic_blocks()
+    let def_use: IndexVec<_, DefsUses<V>> = mir.basic_blocks()
         .iter()
         .map(|b| block(mode, map, b, num_live_vars))
         .collect();
 
-    let mut outs: IndexVec<_, LiveVarSet<V>> = mir
-        .basic_blocks()
+    let mut outs: IndexVec<_, LiveVarSet<V>> = mir.basic_blocks()
         .indices()
         .map(|_| LiveVarSet::new_empty(num_live_vars))
         .collect();
@@ -279,9 +277,10 @@ impl<V: Idx> LivenessResult<V> {
 pub enum DefUse {
     Def,
     Use,
+    Drop,
 }
 
-pub fn categorize<'tcx>(context: PlaceContext<'tcx>, mode: LivenessMode) -> Option<DefUse> {
+pub fn categorize<'tcx>(context: PlaceContext<'tcx>) -> Option<DefUse> {
     match context {
         ///////////////////////////////////////////////////////////////////////////
         // DEFS
@@ -322,13 +321,8 @@ pub fn categorize<'tcx>(context: PlaceContext<'tcx>, mode: LivenessMode) -> Opti
         PlaceContext::Inspect |
         PlaceContext::Copy |
         PlaceContext::Move |
-        PlaceContext::Validate => {
-            if mode.include_regular_use {
-                Some(DefUse::Use)
-            } else {
-                None
-            }
-        }
+        PlaceContext::Validate =>
+            Some(DefUse::Use),
 
         ///////////////////////////////////////////////////////////////////////////
         // DROP USES
@@ -338,13 +332,8 @@ pub fn categorize<'tcx>(context: PlaceContext<'tcx>, mode: LivenessMode) -> Opti
         // uses in drop are special because `#[may_dangle]`
         // attributes can affect whether lifetimes must be live.
 
-        PlaceContext::Drop => {
-            if mode.include_drops {
-                Some(DefUse::Use)
-            } else {
-                None
-            }
-        }
+        PlaceContext::Drop =>
+            Some(DefUse::Drop),
     }
 }
 
@@ -434,10 +423,13 @@ where
 {
     fn visit_local(&mut self, &local: &Local, context: PlaceContext<'tcx>, _: Location) {
         if let Some(v_index) = self.map.from_local(local) {
-            match categorize(context, self.mode) {
+            match categorize(context) {
                 Some(DefUse::Def) => self.defs_uses.add_def(v_index),
-                Some(DefUse::Use) => self.defs_uses.add_use(v_index),
-                None => (),
+                Some(DefUse::Use) if self.mode.include_regular_use => {
+                    self.defs_uses.add_use(v_index)
+                }
+                Some(DefUse::Drop) if self.mode.include_drops => self.defs_uses.add_use(v_index),
+                _ => (),
             }
         }
     }
@@ -526,7 +518,8 @@ pub fn write_mir_fn<'a, 'tcx, V: Idx>(
     write_mir_intro(tcx, src, mir, w)?;
     for block in mir.basic_blocks().indices() {
         let print = |w: &mut dyn Write, prefix, result: &IndexVec<BasicBlock, LiveVarSet<V>>| {
-            let live: Vec<String> = result[block].iter()
+            let live: Vec<String> = result[block]
+                .iter()
                 .map(|v| map.from_live_var(v))
                 .map(|local| format!("{:?}", local))
                 .collect();

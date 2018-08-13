@@ -20,6 +20,8 @@
       html_favicon_url = "https://www.rust-lang.org/favicon.ico",
       html_root_url = "https://doc.rust-lang.org/nightly/")]
 
+#![feature(in_band_lifetimes)]
+#![feature(impl_header_lifetime_elision)]
 #![feature(unboxed_closures)]
 #![feature(fn_traits)]
 #![feature(unsize)]
@@ -82,6 +84,7 @@ pub mod tiny_list;
 pub mod transitive_relation;
 pub mod tuple_slice;
 pub use ena::unify;
+pub mod vec_linked_list;
 pub mod work_queue;
 pub mod fingerprint;
 
