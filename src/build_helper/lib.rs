@@ -240,6 +240,11 @@ pub fn sanitizer_lib_boilerplate(sanitizer_name: &str)
             "build/lib/darwin",
             true,
         ),
+        "powerpc64le-unknown-linux-gnu" => (
+            format!("clang_rt.{}-powerpc64le", sanitizer_name),
+            "build/lib/linux",
+            false,
+        ),
         _ => return Err(()),
     };
     let to_link = if dynamic {
